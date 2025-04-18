@@ -1,133 +1,122 @@
 import express from "express";
 import User from "../models/User.js";
 import jwt from "jsonwebtoken";
-import { create } from "domain";
-// To this (correct path with src):
-import auth from "../src/middleware/auth.middleware.js";
+// You'll need to install a package for OTP generation
+// npm install otp-generator
+import otpGenerator from "otp-generator";
 
 const router = express.Router();
 
+// In-memory OTP storage (in production, consider using Redis or a database)
+const otpStore = {};
+
 const generateToken = (userId) => {
     return jwt.sign({userId}, process.env.JWT_SECRET, { expiresIn: "15d"});
-} 
+}
 
-router.post("/register", async (req, res) => {
+// Request OTP endpoint
+router.post("/request-otp", async (req, res) => {
     try {
-        // console.log("Registering user with:", req.body); //new addition
+        const { phone } = req.body;
 
-        const{email, username, password} = req.body;
-
-        if(!username || !email || !password){
-            return res.status(400).json({message: "All field are required"});
+        if (!phone) {
+            return res.status(400).json({ message: "Phone number is required" });
         }
 
-        if(password.length < 6){
-            return res.status(400).json({message: "Password should be at least 6 characters long"});
-        }
+        // Generate a 6-digit OTP
+        const otp = otpGenerator.generate(6, { 
+            digits: true, 
+            alphabets: false, 
+            upperCase: false, 
+            specialChars: false 
+        });
 
-        if(username.length < 3){
-            return res.status(400).json({message: "Username should be at least 3 characters long"});
-        }
+        // Store OTP with expiry (5 minutes)
+        otpStore[phone] = {
+            otp,
+            expiresAt: Date.now() + 5 * 60 * 1000 // 5 minutes in milliseconds
+        };
 
-        const existingEmail = await User.findOne({ email });
-        if (existingEmail) {
-        return res.status(400).json({ message: "Email already exists" });
-        }
+        // In a real application, you would send the OTP via SMS here
+        console.log(`OTP for ${phone}: ${otp}`);
 
-        const existingUsername = await User.findOne({ username });
-        if (existingUsername) {
-        return res.status(400).json({ message: "Username already exists" });
-        }
+        // Check if user exists
+        let user = await User.findOne({ phoneNumber: phone });
 
-        //get a random avatar
-        const profileImage = `https://api.dicebear.com/9.x/personas/svg?seed=${username}`;
-
-        const user = new User({
-            email,
-            username,
-            password,
-            profileImage,
-            
-        })
-
-        await user.save();
-
-        const token = generateToken(user._id);
-
-        res.status(201).json({
-            token,
-            user:{
-                id: user._id,
-                username: user.username,
-                email: user.email,
-                profileImage: user.profileImage,
-                createdAt: user.createdAt,
-
-            }
-        })
-
+        res.status(200).json({ 
+            message: "OTP sent successfully",
+            isNewUser: !user
+        });
 
     } catch (error) {
-        console.log("Error in register route", error); //new addition
-        // console.error(error.stack); //new addition
-        res.status(500).json({message: "Internal server error "});
-    }
-});
-router.post("/login", async (req, res) => {
-    try { 
-        const { email, password } = req.body;
-
-    if (!email || !password)
-    return res.status(400).json({ message: "All fields are required" });
-
-    // check if user exists
-    const user = await User.findOne({ email });
-    if (!user)
-    return res.status(400).json({ message: "User does not exists" });
-
-    // check if password is correct
-    const isPasswordCorrect = await user.comparePassword(password);
-    if (!isPasswordCorrect) return res.status(400).json({ message: "Invalid credentials" });
-
-    //generate token
-    const token = generateToken(user._id);
-
-    res.status(200).json({
-        token,
-        user: {
-            id: user._id,
-            username: user.username,
-            email: user.email,
-            profileImage: user.profileImage,
-            createdAt: user.createdAt,
-        },
-    });
-
-    } catch (error) {
-        console.log("Error in login route", error);
-        res.status(500).json({message: "Internal server error!"});
-    }
-});
-
-router.put('/update-expo-token', auth, async (req, res) => {
-    try {
-        const user = await User.findById(req.user.id);
-        if (!user) {
-            return res.status(404).json({ message: "User not found" });
-        }
-
-        if (!req.body.expoPushToken) {
-            return res.status(400).json({ message: "Expo push token is required" });
-        }
-
-        user.expoPushToken = req.body.expoPushToken;
-        await user.save();
-        
-        res.status(200).json({ message: 'Token updated successfully' });
-    } catch (error) {
-        console.error("Error updating Expo token:", error);
+        console.log("Error in request-otp route", error);
         res.status(500).json({ message: "Internal server error" });
     }
 });
+
+// Verify OTP endpoint
+router.post("/verify-otp", async (req, res) => {
+    try {
+        const { phone, otp } = req.body;
+
+        if (!phone || !otp) {
+            return res.status(400).json({ message: "Phone number and OTP are required" });
+        }
+
+        // Check if OTP exists and is valid
+        const otpData = otpStore[phone];
+        if (!otpData || otpData.otp !== otp) {
+            return res.status(400).json({ message: "Invalid OTP" });
+        }
+
+        // Check if OTP is expired
+        if (Date.now() > otpData.expiresAt) {
+            delete otpStore[phone]; // Clear expired OTP
+            return res.status(400).json({ message: "OTP has expired" });
+        }
+
+        // Clear OTP after successful verification
+        delete otpStore[phone];
+
+        // Find or create user
+        let user = await User.findOne({ phoneNumber: phone });
+        
+        if (!user) {
+            // Create a new user with phone number
+            const username = `user_${Date.now().toString().slice(-6)}`;
+            const profileImage = `https://api.dicebear.com/9.x/personas/svg?seed=${username}`;
+            
+            user = new User({
+                phoneNumber: phone,
+                username,
+                profileImage,
+                // Generate a random password for the user
+                password: Math.random().toString(36).slice(-8),
+            });
+            
+            await user.save();
+        }
+
+        // Generate token
+        const token = generateToken(user._id);
+
+        res.status(200).json({
+            token,
+            user: {
+                id: user._id,
+                username: user.username,
+                phoneNumber: user.phoneNumber,
+                profileImage: user.profileImage,
+                createdAt: user.createdAt,
+            }
+        });
+
+    } catch (error) {
+        console.log("Error in verify-otp route", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+});
+
+// Keep the existing logout route if needed
 
 export default router;
