@@ -1,8 +1,6 @@
 import express from "express";
 import User from "../models/User.js";
 import jwt from "jsonwebtoken";
-// You'll need to install a package for OTP generation
-// npm install otp-generator
 import otpGenerator from "otp-generator";
 
 const router = express.Router();
@@ -22,26 +20,27 @@ router.post("/request-otp", async (req, res) => {
         if (!phone) {
             return res.status(400).json({ message: "Phone number is required" });
         }
+        
+        // Normalize phone number to remove any spaces, dashes, or parentheses
+        const normalizedPhone = phone.replace(/\s+/g, '').replace(/[()-]/g, '');
 
         // Generate a 6-digit OTP
-        const otp = otpGenerator.generate(6, { 
-            digits: true, 
-            alphabets: false, 
-            upperCase: false, 
-            specialChars: false 
-        });
+        const otp = Array(6).fill(0).map(() => 
+            Math.floor(Math.random() * 10)
+        ).join('');
 
         // Store OTP with expiry (5 minutes)
-        otpStore[phone] = {
+        otpStore[normalizedPhone] = {
             otp,
             expiresAt: Date.now() + 5 * 60 * 1000 // 5 minutes in milliseconds
         };
 
-        // In a real application, you would send the OTP via SMS here
-        console.log(`OTP for ${phone}: ${otp}`);
+        // Log for debugging
+        console.log(`OTP generated for ${normalizedPhone}: ${otp}`);
+        console.log(`OTP store after generation:`, otpStore);
 
         // Check if user exists
-        let user = await User.findOne({ phoneNumber: phone });
+        let user = await User.findOne({ phoneNumber: normalizedPhone });
 
         res.status(200).json({ 
             message: "OTP sent successfully",
@@ -63,23 +62,37 @@ router.post("/verify-otp", async (req, res) => {
             return res.status(400).json({ message: "Phone number and OTP are required" });
         }
 
+        // Normalize phone number to match the format used in request-otp
+        const normalizedPhone = phone.replace(/\s+/g, '').replace(/[()-]/g, '');
+        
+        console.log(`Verifying OTP for ${normalizedPhone}: ${otp}`);
+        console.log(`Current OTP store:`, otpStore);
+
         // Check if OTP exists and is valid
-        const otpData = otpStore[phone];
-        if (!otpData || otpData.otp !== otp) {
+        const otpData = otpStore[normalizedPhone];
+        if (!otpData) {
+            console.log(`No OTP found for ${normalizedPhone}`);
+            return res.status(400).json({ message: "Invalid OTP or phone number" });
+        }
+        
+        if (otpData.otp !== otp) {
+            console.log(`OTP mismatch. Expected: ${otpData.otp}, Received: ${otp}`);
             return res.status(400).json({ message: "Invalid OTP" });
         }
 
         // Check if OTP is expired
         if (Date.now() > otpData.expiresAt) {
-            delete otpStore[phone]; // Clear expired OTP
+            console.log(`OTP expired for ${normalizedPhone}`);
+            delete otpStore[normalizedPhone]; // Clear expired OTP
             return res.status(400).json({ message: "OTP has expired" });
         }
 
         // Clear OTP after successful verification
-        delete otpStore[phone];
+        delete otpStore[normalizedPhone];
+        console.log(`OTP verified and cleared for ${normalizedPhone}`);
 
-        // Find or create user
-        let user = await User.findOne({ phoneNumber: phone });
+        // Find or create user with normalized phone number
+        let user = await User.findOne({ phoneNumber: normalizedPhone });
         
         if (!user) {
             // Create a new user with phone number
@@ -87,7 +100,7 @@ router.post("/verify-otp", async (req, res) => {
             const profileImage = `https://api.dicebear.com/9.x/personas/svg?seed=${username}`;
             
             user = new User({
-                phoneNumber: phone,
+                phoneNumber: normalizedPhone,
                 username,
                 profileImage,
                 // Generate a random password for the user
@@ -95,10 +108,12 @@ router.post("/verify-otp", async (req, res) => {
             });
             
             await user.save();
+            console.log(`New user created with phone ${normalizedPhone}`);
         }
 
         // Generate token
         const token = generateToken(user._id);
+        console.log(`JWT token generated for user ${user._id}`);
 
         res.status(200).json({
             token,
@@ -116,7 +131,5 @@ router.post("/verify-otp", async (req, res) => {
         res.status(500).json({ message: "Internal server error" });
     }
 });
-
-// Keep the existing logout route if needed
 
 export default router;
