@@ -73,7 +73,7 @@ router.post("/verify-otp", async (req, res) => {
             return res.status(400).json({ message: "Invalid OTP or phone number" });
         }
         
-        if (otpData.otp !== otp) {
+        if (otpData.otp.toString() !== otp.toString()) {
             console.log(`OTP mismatch. Expected: ${otpData.otp}, Received: ${otp}`);
             return res.status(400).json({ message: "Invalid OTP" });
             console.log(`Expected (type: ${typeof expectedOtp}): ${expectedOtp}`);
