@@ -76,6 +76,8 @@ router.post("/verify-otp", async (req, res) => {
         if (otpData.otp !== otp) {
             console.log(`OTP mismatch. Expected: ${otpData.otp}, Received: ${otp}`);
             return res.status(400).json({ message: "Invalid OTP" });
+            console.log(`Expected (type: ${typeof expectedOtp}): ${expectedOtp}`);
+            console.log(`Received (type: ${typeof receivedOtp}): ${receivedOtp}`);
         }
 
         // Check if OTP is expired
@@ -85,8 +87,7 @@ router.post("/verify-otp", async (req, res) => {
             return res.status(400).json({ message: "OTP has expired" });
         }
 
-        console.log(`Expected (type: ${typeof expectedOtp}): ${expectedOtp}`);
-        console.log(`Received (type: ${typeof receivedOtp}): ${receivedOtp}`);
+
 
 
         // Clear OTP after successful verification
