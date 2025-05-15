@@ -85,6 +85,10 @@ router.post("/verify-otp", async (req, res) => {
             return res.status(400).json({ message: "OTP has expired" });
         }
 
+        console.log(`Expected (type: ${typeof expectedOtp}): ${expectedOtp}`);
+        console.log(`Received (type: ${typeof receivedOtp}): ${receivedOtp}`);
+
+
         // Clear OTP after successful verification
         delete otpStore[normalizedPhone];
         console.log(`OTP verified and cleared for ${normalizedPhone}`);
