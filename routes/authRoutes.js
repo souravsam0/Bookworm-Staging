@@ -1,7 +1,6 @@
 import express from "express";
 import User from "../models/User.js";
 import jwt from "jsonwebtoken";
-import otpGenerator from "otp-generator";
 
 const router = express.Router();
 
@@ -25,7 +24,11 @@ router.post("/request-otp", async (req, res) => {
         const normalizedPhone = phone.replace(/\s+/g, '').replace(/[()-]/g, '');
 
         // Generate a 6-digit OTP
-        const otp = 476942;
+        // const otp = Array(6).fill(0).map(() => 
+        //     Math.floor(Math.random() * 10)
+        // ).join('');
+
+        const otp = 476942
 
         // Store OTP with expiry (5 minutes)
         otpStore[normalizedPhone] = {
@@ -76,8 +79,6 @@ router.post("/verify-otp", async (req, res) => {
         if (otpData.otp.toString() !== otp.toString()) {
             console.log(`OTP mismatch. Expected: ${otpData.otp}, Received: ${otp}`);
             return res.status(400).json({ message: "Invalid OTP" });
-            console.log(`Expected (type: ${typeof expectedOtp}): ${expectedOtp}`);
-            console.log(`Received (type: ${typeof receivedOtp}): ${receivedOtp}`);
         }
 
         // Check if OTP is expired
@@ -86,9 +87,6 @@ router.post("/verify-otp", async (req, res) => {
             delete otpStore[normalizedPhone]; // Clear expired OTP
             return res.status(400).json({ message: "OTP has expired" });
         }
-
-
-
 
         // Clear OTP after successful verification
         delete otpStore[normalizedPhone];
@@ -99,7 +97,16 @@ router.post("/verify-otp", async (req, res) => {
         
         if (!user) {
             // Create a new user with phone number
-            const username = `user_${Date.now().toString().slice(-6)}`;
+            let username;
+
+            if (normalizedPhone === process.env.HIM_PHONE) {
+                username = process.env.HIM_USERNAME;
+            } else if (normalizedPhone === process.env.HER_PHONE) {
+                username = process.env.HER_USERNAME;
+            } else {
+                username = `user_${Date.now().toString().slice(-6)}`;
+            }
+
             const profileImage = `https://api.dicebear.com/9.x/personas/svg?seed=${username}`;
             
             user = new User({
