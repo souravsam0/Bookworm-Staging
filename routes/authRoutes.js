@@ -97,11 +97,7 @@ router.post("/verify-otp", async (req, res) => {
         
         if (!user) {
             // Create a new user with phone number
-            let username;
-
-            if
-                username = `user_${Date.now().toString().slice(-6)}`;
-            }
+            let username = `user_${Date.now().toString().slice(-6)}`;
 
             const profileImage = `https://api.dicebear.com/9.x/personas/svg?seed=${username}`;
             
