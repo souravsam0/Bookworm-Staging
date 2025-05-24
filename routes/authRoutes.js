@@ -99,11 +99,7 @@ router.post("/verify-otp", async (req, res) => {
             // Create a new user with phone number
             let username;
 
-            if (normalizedPhone === process.env.HIM_PHONE) {
-                username = process.env.HIM_USERNAME;
-            } else if (normalizedPhone === process.env.HER_PHONE) {
-                username = process.env.HER_USERNAME;
-            } else {
+            if
                 username = `user_${Date.now().toString().slice(-6)}`;
             }
 
